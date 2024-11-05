@@ -124,6 +124,17 @@ Copy Code
 sudo chmod +x /home
 
 sudo nano /home/steve/rf_control_app/index.html
+#Confirmation Dialog:
+#Before executing the command, a confirmation dialog is displayed using confirm().
+#The message in the dialog is dynamically generated based on the command being executed (e.g., "Are you sure you want to turn on the heater?").
+#Early Exit:
+#If the user clicks "Cancel" in the confirmation dialog, the function exits early, preventing the command from being sent.
+#Benefits
+#This approach helps to reduce the risk of accidental commands by requiring user confirmation, making the interface safer and more user-friendly.
+#####################################################################################
+
+
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -176,18 +187,28 @@ sudo nano /home/steve/rf_control_app/index.html
 
     <script>
         function sendCommand(command) {
+            // Confirmation dialog
+            const confirmation = confirm(`Are you sure you want to ${command === 'on' ? 'turn on' : command === 'off' ? 'turn off' : command === 'up' ? 'increase' : 'decrease'} the heater?`);
+            if (!confirmation) {
+                return; // Exit the function if the user cancels
+            }
+
+            const messageElement = document.getElementById('message');
+            messageElement.innerText = 'Loading...'; // Show loading message
+
             fetch(`/execute?command=${command}`)
                 .then(response => response.json())
                 .then(data => {
-                    document.getElementById('message').innerText = JSON.stringify(data);
+                    messageElement.innerText = JSON.stringify(data);
                 })
                 .catch(error => {
-                    document.getElementById('message').innerText = 'Error: ' + error;
+                    messageElement.innerText = 'Error: ' + error;
                 });
         }
     </script>
 </body>
 </html>
+
 
 ############################################
 dir
