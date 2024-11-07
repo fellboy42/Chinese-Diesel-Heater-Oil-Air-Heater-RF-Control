@@ -1,0 +1,339 @@
+#https://github.com/fellboy42/Chinese-Diesel-Heater-Oil-Air-Heater-RF-Control#
+
+Step-by-Step Installation Instructions for Chinese-Diesel-Heater-Oil-Air-Heater-RF-Control running RPI live video
+
+Update Your System:
+bash
+
+Copy Code
+sudo apt update
+sudo apt upgrade -y
+#########################################
+Install Python 3 and pip:
+
+
+Copy Code
+sudo apt install -y python3 python3-pip
+#################################################
+Install Necessary Python Libraries:
+
+Copy Code
+sudo pip3 install rpi-rf Flask  --break-system-packages
+Create a Directory for Your Application:
+
+
+Copy Code
+sudo mkdir -p /home/steve/rf_control_app
+Create rf_sender.py:
+
+
+Copy Code
+sudo nano /home/steve/rf_control_app/rf_sender.py
+Paste the following code into rf_sender.py:
+python
+
+Copy Code
+#!/usr/bin/env python3
+
+import argparse
+import logging
+from rpi_rf import RFDevice
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%d %H:%M:%S',
+                    format='%(asctime)-15s - [%(levelname)s] %(module)s: %(message)s',)
+
+# Set up argument parser
+parser = argparse.ArgumentParser(description='Sends decimal codes via a 433/315MHz GPIO device')
+parser.add_argument('code', metavar='CODE', type=int, help="First decimal code to send")
+parser.add_argument('-g', dest='gpio', type=int, default=17, help="GPIO pin (Default: 17)")
+parser.add_argument('-p', dest='pulselength', type=int, default=350, help="Pulselength (Default: 350)")
+parser.add_argument('-t', dest='protocol', type=int, default=1, help="Protocol (Default: 1)")
+parser.add_argument('-l', dest='length', type=int, default=32, help="Codelength (Default: 32)")
+parser.add_argument('-r', dest='repeat', type=int, default=10, help="Repeat cycles (Default: 4)")
+args = parser.parse_args()
+
+try:
+    # Initialize RFDevice
+    rfdevice = RFDevice(args.gpio)
+    rfdevice.enable_tx()
+    rfdevice.tx_repeat = args.repeat
+
+    # Send the code
+    logging.info(f"Sending code {args.code} with protocol {args.protocol}, pulselength {args.pulselength}, length {args.length}")
+    rfdevice.tx_code(args.code, args.protocol, args.pulselength, args.length)
+
+except Exception as e:
+    logging.error(f"Failed to send RF code: {e}")
+finally:
+    if 'rfdevice' in locals():
+        rfdevice.cleanup()
+
+########################################################		
+Make rf_sender.py Executable:
+sudo apt install -y python3-picamera2
+sudo apt install -y python3-opencv
+
+
+Copy Code
+sudo chmod +x /home/steve/rf_control_app/rf_sender.py
+Create app.py:
+bash
+
+Copy Code
+sudo nano /home/steve/rf_control_app/app.py
+Paste the following code into app.py:
+python
+
+Copy Code
+from flask import Flask, request, send_from_directory, jsonify, Response
+import subprocess
+import cv2  # OpenCV for camera streaming
+import threading
+
+app = Flask(__name__)
+
+# Define RF codes for each command in a dictionary
+commands = {
+    "on": "151196080",
+    "off": "151192840",
+    "up": "151193840",
+    "down": "151192200"
+}
+
+# Initialize camera
+camera = cv2.VideoCapture(0)  # Use 0 for the default USB camera
+
+def generate_frames():
+    while True:
+        success, frame = camera.read()
+        if not success:
+            break
+        else:
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+@app.route('/')
+def index():
+    return send_from_directory('.', 'index.html')
+
+@app.route('/execute')
+def execute():
+    command = request.args.get('command')
+    if command not in commands:
+        return jsonify({"error": "Unknown command."}), 400
+
+    try:
+        subprocess.run(
+            ['python3', 'rf_sender.py', str(commands[command]), '-g', '17', '-p', '350', '-t', '1', '-l', '32', '-r', '4'],
+            cwd='/home/steve/rf_control_app',
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        return jsonify({"success": f"Executed command: {command}"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
+
+######################################################################	
+Make app.py Executable (optional, as it is not strictly necessary):
+
+
+Copy Code
+sudo chmod +x /home
+
+sudo nano /home/steve/rf_control_app/index.html
+#Confirmation Dialog:
+#Before executing the command, a confirmation dialog is displayed using confirm().
+#The message in the dialog is dynamically generated based on the command being executed (e.g., "Are you sure you want to turn on the heater?").
+#Early Exit:
+#If the user clicks "Cancel" in the confirmation dialog, the function exits early, preventing the command from being sent.
+#Benefits
+#This approach helps to reduce the risk of accidental commands by requiring user confirmation, making the interface safer and more user-friendly.
+#####################################################################################
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Oil Heater Control</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            width: 90%;
+        }
+        button {
+            margin: 5px;
+            padding: 10px 15px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        #message {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #333;
+        }
+        #videoStream {
+            margin-top: 20px;
+            width: 100%;
+            max-width: 400px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Oil Air Heater RF Control</h1>
+        <button onclick="sendCommand('on')">Turn On</button>
+        <button onclick="sendCommand('off')">Turn Off</button>
+        <button onclick="sendCommand('up')">Increase</button>
+        <button onclick="sendCommand('down')">Decrease</button>
+        <div id="message"></div>
+
+        <!-- Video Stream -->
+        <h2>Live Video Feed</h2>
+        <img id="videoStream" src="/video_feed" alt="Live Video Stream">
+    </div>
+
+    <script>
+        function sendCommand(command) {
+            const confirmation = confirm(`Are you sure you want to ${command === 'on' ? 'turn on' : command === 'off' ? 'turn off' : command === 'up' ? 'increase' : 'decrease'} the heater?`);
+            if (!confirmation) {
+                return;
+            }
+
+            const messageElement = document.getElementById('message');
+            messageElement.innerText = 'Loading...';
+
+            fetch(`/execute?command=${command}`)
+                .then(response => response.json())
+                .then(data => {
+                    messageElement.innerText = JSON.stringify(data);
+                })
+                .catch(error => {
+                    messageElement.innerText = 'Error: ' + error;
+                });
+        }
+    </script>
+</body>
+</html>
+
+
+
+############################################
+dir
+cd rf_control_app
+python3 app.py
+###################################################
+
+To start your Flask app at boot on a Raspberry Pi, you can create a systemd service. Here’s how to set it up step-by-step:
+
+1. Create a Systemd Service File
+Open a terminal on your Raspberry Pi.
+
+Create a new service file in the /etc/systemd/system/ directory:
+
+bash
+Copy code
+sudo nano /etc/systemd/system/rf_control_app.service
+Add the following content to the service file:
+
+ini
+Copy code
+[Unit]
+Description=RF Control Flask Application
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/steve/rf_control_app/app.py
+WorkingDirectory=/home/steve/rf_control_app
+StandardOutput=inherit
+StandardError=inherit
+Restart=always
+User=steve
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+####################################################
+ExecStart: Path to your Python executable and your Flask app.
+WorkingDirectory: The directory where your app is located.
+User: The user that will run the service (replace steve with your actual username if different).
+2. Reload Systemd
+After creating the service file, reload the systemd daemon to recognize the new service:
+###########################################################################
+
+Copy code
+sudo systemctl daemon-reload
+3. Enable the Service to Start at Boot
+Enable the service so it starts automatically when the system boots:
+
+bash
+Copy code
+sudo systemctl enable rf_control_app.service
+4. Start the Service
+You can start the service immediately without rebooting:
+
+bash
+Copy code
+sudo systemctl start rf_control_app.service
+5. Check the Service Status
+To verify that the service is running, use:
+
+bash
+Copy code
+sudo systemctl status rf_control_app.service
+This will show you the status of your Flask application and any errors if it failed to start.
+
+6. (Optional) View Logs
+If you want to see the logs for your application, you can use:
+
+bash
+Copy code
+journalctl -u rf_control_app.service -f
+This command will show you the logs and continue updating in real-time as new logs are generated.
+
+Reboot and Test
+After setting everything up, reboot your Raspberry Pi to ensure that the service starts as expected:
+
+bash
+Copy code
+sudo reboot
+Once your Raspberry Pi has rebooted, you should be able to access your Flask application at http://<Raspberry_Pi_IP>:5000.
+
+
+
+
+
+
+
+
+
+
