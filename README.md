@@ -1,10 +1,8 @@
-###################################################################
-update video_live_install_rf_control sh.txt works on RPI ZERO works on RPI2, RPI4
-#####################################################################
 
-############################################################################
-Now with Live Video Feed
-#########################################
+update video_live_install_rf_control sh.txt works on RPI ZERO 
+works on RPI2, RPI4
+
+
 script i made for my work shop to automate chinese  oil air heater for remote control from any where on the loacl network with help from https://github.com/milaq/rpi-rf/tree/master thanks
 Key Changes Made to html
 Confirmation Dialog:
